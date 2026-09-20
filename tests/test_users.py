@@ -9,7 +9,7 @@ from datetime import datetime,timezone,timedelta
 from app.tokens import create_access_token,SECRET_KEY,ALGORITHM
 from jose import jwt
 saved_token=[]
-def fake_send_verification_email(email,token):
+def fake_send_verification_email(token):
     saved_token.append(token)
 reset_token=[]
 def fake_send_reset_password(email,token):
