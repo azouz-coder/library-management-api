@@ -1,5 +1,19 @@
 import sqlite3
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 DATABASE_PATH="test_library.db"
+engine = create_engine(f"sqlite:///{DATABASE_PATH}")
+def create_db_engine(path):
+    return create_engine(f"sqlite:///{path}")
+def create_session_factory(engine):
+    return sessionmaker(bind=engine)
+SessionLocal = sessionmaker(bind=engine)
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 def get_connection():
     conn=sqlite3.connect(DATABASE_PATH,check_same_thread=False)
     conn.row_factory=sqlite3.Row

@@ -8,7 +8,7 @@ from app.crud_book import (
     crud_update_book,
     crud_delete_book,
 )
-from app.database import get_connection
+from app.database import get_connection , get_db
 from app.tokens import require_admin
 import uuid
 import os 
@@ -18,23 +18,23 @@ router=APIRouter(
     tags=['books']
 )
 @router.post("/")
-async def created_book(book:CreateBook,crruent_book=Depends(require_admin)):
-    return crud_create_book(book)
+async def created_book(book:CreateBook, db = Depends(get_db),crruent_book=Depends(require_admin)):
+    return crud_create_book(book,db)
 
 @router.get("/{isbn}",response_model=ResponseBook)
-async def read_book(isbn:str):
-    return crud_read_book(isbn)
+async def read_book(isbn:str,db = Depends(get_db)):
+    return crud_read_book(isbn,db)
 @router.get("/",response_model=BookPaginatedRespons)
-async def search_book(search: str = None ,author:str = None,  authors: Optional[List[str]]=Query(None), limit: int = Query(10,ge=1,le=100) , offset: int = Query(0,ge=0)):
-    return crud_search_books(search,author,authors,limit,offset)
+async def search_book(db=Depends(get_db),search: str = None ,author:str = None,  authors: Optional[List[str]]=Query(None), limit: int = Query(10,ge=1,le=100) , offset: int = Query(0,ge=0)):
+    return crud_search_books(db,search,author,authors,limit,offset)
 
 @router.put("/{isbn}")
-async def update_book(isbn:str,book:UpdateBook,crruent_book=Depends(require_admin)):
-    return crud_update_book(isbn,book)
+async def update_book(isbn:str,book:UpdateBook,db = Depends(get_db),crruent_book=Depends(require_admin)):
+    return crud_update_book(isbn,book,db)
 
 @router.delete("/{isbn}")
-async def delete_book(isbn:str,crruent_book=Depends(require_admin)):
-    return crud_delete_book(isbn)
+async def delete_book(isbn:str,db=Depends(get_db),crruent_book=Depends(require_admin)):
+    return crud_delete_book(isbn,db)
 @router.post("/{isbn}/uploads")
 async def upload_book_image(isbn:str,file:UploadFile=File(...)):
     conn=None

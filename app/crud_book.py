@@ -1,131 +1,123 @@
 from app.database import get_connection
+from sqlalchemy.orm import Session
+from sqlalchemy import select,func,or_,and_
 from fastapi import HTTPException
 from typing import Optional,List
-
-def crud_create_book(book):
-    conn=None
+from models import Book
+def crud_create_book(book,db:Session):
     try:
-        conn=get_connection()
-        cursor=conn.cursor()
-        cursor.execute("SELECT * FROM books WHERE isbn=?",(book.isbn,))
-        row=cursor.fetchone()
-        if row:
+        verirfy_book= db.get(Book,book.isbn)
+        if verirfy_book is not None:
             raise HTTPException(
                 status_code=409,
                 detail="Book already to creat"
             )
-        cursor.execute("INSERT INTO books(isbn,title,author) VALUES(?,?,?)",(book.isbn,book.title,book.author))
-        conn.commit()
+        new_book = Book(isbn=book.isbn,title=book.title,author=book.author)
+        db.add(new_book)
+        db.commit()
+
         return {
             "message":"Book added seccussfully"
         }
     except HTTPException:
         raise
-    finally:
-        if conn is not None:
-            conn.close()
+    except Exception:
+        db.rollback()
+        raise
 
-def crud_read_book(isbn:str):
-    conn=None
+def crud_read_book(isbn:str, db:Session):
     try:
-        conn=get_connection()
-        cursor=conn.cursor()
-        cursor.execute("SELECT * FROM books WHERE isbn=?",(isbn,))
-        row=cursor.fetchone()
-        if not row:
+        book =db.get(Book,isbn)
+        if book is None:
             raise HTTPException(
                 status_code=404,
                 detail="Book not found"
             )
         return {
-            "isbn":row[0],
-            "title":row[1],
-            "author":row[2]
+            "isbn":book.isbn,
+            "title":book.title,
+            "author":book.author
         }
     except HTTPException:
         raise
-    finally:
-        if conn is not None:
-            conn.close()
     
-def crud_search_books(search: str = None ,author: str =None, authors: Optional[List[str]]=None, limit: int = 10 , offset : int = 0):
-    conn=None
-    try:
-        conn=get_connection()
-        cursor=conn.cursor()
+def crud_search_books(db:Session,search: str = None ,author: str =None, authors: Optional[List[str]]=None, limit: int = 10 , offset : int = 0):
+
         conditions=[]
-        params=[]
-        where_clause=""
-        value=[]
         if search:
             search_term=f"%{search}%"
-            conditions.append("(isbn LIKE ? OR title LIKE ? OR author LIKE ?)")
-            params.extend([search_term,search_term,search_term])
+            conditions.append(or_(Book.isbn.ilike(search_term),Book.title.ilike(search_term),Book.author.ilike(search_term)))
         if author:
-            conditions.append(" author = ?")
-            params.append(author)
+            conditions.append(Book.author==author)
         if authors:
-            for i in range(len(authors)):
-                value.append("?")
-            value=",".join(value)
-            conditions.append(f" author IN ({value})")
-            params.extend(authors)
+            conditions.append(Book.author.in_(authors))
+            
         if conditions:
-            where_clause=" WHERE "+" AND ".join(conditions)
-        cursor.execute(f"SELECT COUNT(*) FROM books {where_clause}",params)
-        total=cursor.fetchone()[0]
-        params.extend([limit,offset])
-        cursor.execute(f"SELECT * FROM books {where_clause} ORDER BY title ASC LIMIT ? OFFSET ?",params)
-        rows=cursor.fetchall()
+            where_clause= and_(*conditions)
+        stmt = select(func.count()).select_from(Book)
+        if conditions:
+            stmt = stmt.where(where_clause)
+        total = db.execute(stmt).scalar()
+        if conditions:
+            stmt = select(Book).where(where_clause).order_by(Book.title).limit(limit).offset(offset)
+            books= db.execute(stmt).scalars().all()
+        else:
+            stmt = select(Book).order_by(Book.title).limit(limit).offset(offset)
+            books= db.execute(stmt).scalars().all()
+            
         return {
             "total":total,
             "items":[{
-                "isbn":row[0],
-                "title":row[1],
-                "author":row[2]
-            }for row in rows]
+                "isbn":book.isbn,
+                "title":book.title,
+                "author":book.author
+            }for book in books]
         }
-    finally:
-        if conn is not None:
-            conn.close()
-def crud_update_book(isbn:str,book):
+        
+def crud_update_book(isbn:str,book,db:Session):
     conn=None
     try:
-        conn=get_connection()
-        cursor=conn.cursor()
-        cursor.execute("UPDATE books SET title=? , author=? WHERE isbn=?",(book.title,book.author,isbn))
-        conn.commit()
-        if cursor.rowcount==0:
+        book_update=db.get(Book,isbn)
+        if book_update is None:
             raise HTTPException(
                 status_code=404,
                 detail="Book not found"
             )
+        if book.title is None and book.author is None:
+            raise HTTPException(
+                status_code=409,
+                detail="There is no data"
+            )
+        if book.title is not None:
+            book_update.title=book.title
+        if book.author is not None:
+            book_update.author=book.author
+        db.commit()
+        
         return {
             "message":"Book updated seccussfully"
         }
     except HTTPException:
         raise
-    finally:
-        if conn is not None:
-            conn.close()
+    except Exception:
+        db.rollback()
+        raise
 
-def crud_delete_book(isbn:str):
-    conn=None
+def crud_delete_book(isbn:str,db:Session):
     try:
-        conn=get_connection()
-        cursor=conn.cursor()
-        cursor.execute("DELETE FROM books WHERE isbn=?",(isbn,))
-        conn.commit()
-        if cursor.rowcount==0:
+        book_delete=db.get(Book,isbn)
+        if book_delete is None:
             raise HTTPException(
                 status_code=404,
                 detail="Book not found"
             )
+        db.delete(book_delete)
+        db.commit()
         return{
             "message":"Book deleted seccussfully"
         }
     except HTTPException:
         raise
-    finally:
-        if conn is not None:
-            conn.close()
+    except Exception:
+        db.rollback()
+        raise
