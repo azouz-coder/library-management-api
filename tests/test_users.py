@@ -3,11 +3,13 @@ import pytest
 from app.main import app
 import os 
 import app.database as database
+from app.database import create_db_engine,create_session_factory,get_db
 import app.users as users
 import hashlib
 from datetime import datetime,timezone,timedelta
 from app.tokens import create_access_token,SECRET_KEY,ALGORITHM
 from jose import jwt
+from sqlalchemy.orm import Session,sessionmaker
 saved_token=[]
 def fake_send_verification_email(email,token):
     saved_token.append(token)
@@ -15,17 +17,48 @@ reset_token=[]
 def fake_send_reset_password(email,token):
     reset_token.append(email)
     reset_token.append(token)
+ 
 @pytest.fixture
-def client(monkeypatch):
+def test_db_engine():
     database.DATABASE_PATH="test_library_test.db"
+    if os.path.exists("test_library_test.db"):
+        os.remove("test_library_test.db")
     database.init_db()
+    engine = create_db_engine("test_library_test.db")
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+        try:
+            if os.path.exists("test_library_test.db"):
+                os.remove("test_library_test.db")
+        except PermissionError:
+            pass
+    
+@pytest.fixture
+def db(test_db_engine):
+    SessionLocal = sessionmaker(test_db_engine)
+    try:
+        db = SessionLocal()
+        yield db
+    finally:
+        db.close()
+@pytest.fixture
+def client(test_db_engine,monkeypatch):
+    
     monkeypatch.setattr(users,"send_verification_email",fake_send_verification_email)
     monkeypatch.setattr(users,"send_password_reset_email",fake_send_reset_password)
+    SessionLocal = create_session_factory(test_db_engine)
+    def override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+    app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
-    try:
-        os.remove("test_library_test.db")
-    except PermissionError:
-        pass 
+    app.dependency_overrides.clear()
+
 def test_verify_email(client):
     saved_token.clear()
     try:
@@ -70,7 +103,7 @@ def test_verify_email_expired_token(client):
 def test_creat_user_duplicate_email(client):
     user={
         "name":"test",
-        "email":"test@gmail.com",
+        "email":"testr@gmail.com",
         "password":"testtest"
     }
     response1=client.post("/users/",json=user)

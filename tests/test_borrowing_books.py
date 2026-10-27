@@ -2,22 +2,47 @@ import pytest
 import os
 from fastapi.testclient import TestClient
 import app.database as database
+from app.database import create_db_engine,create_session_factory,get_db
 from app.main import app 
 from app.tokens import create_access_token
 import app.users as users
 @pytest.fixture
-def client(monkeypatch):
+def test_db_engine():
     database.DATABASE_PATH="test_library_test.db"
     if os.path.exists("test_library_test.db"):
         os.remove("test_library_test.db")
     database.init_db()
-    monkeypatch.setattr(users,"send_verification_email",lambda email,token:None)
-    yield TestClient(app)
+    engine =create_db_engine("test_library_test.db")
     try:
-        if os.path.exists("test_library_test.db"):
-            os.remove("test_library_test.db")
-    except PermissionError:
-        pass
+        yield engine
+    finally:
+        engine.dispose()
+        try: 
+            if os.path.exists("test_library_test.db"):
+                os.remove("test_library_test.db")
+        except PermissionError:
+            pass
+@pytest.fixture
+def db(test_db_engine):
+    SessionLocal = create_session_factory(test_db_engine)
+    try:
+        db=SessionLocal()
+        yield db
+    finally:
+        db.close()
+@pytest.fixture
+def client(monkeypatch,test_db_engine):
+    monkeypatch.setattr(users,"send_verification_email",lambda email,token:None)
+    SessionLocal = create_session_factory(test_db_engine)
+    def override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app)
+    app.dependency_overrides.clear()
 def test_borrowing_book(client):
     try:
         conn=database.get_connection()
