@@ -4,7 +4,7 @@ from datetime import datetime,timezone,timedelta
 import hashlib
 import secrets
 import os
-from app.database import get_connection,get_db
+from app.database import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from app.security import oauth2_scheme

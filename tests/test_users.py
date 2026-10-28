@@ -9,7 +9,9 @@ import hashlib
 from datetime import datetime,timezone,timedelta
 from app.tokens import create_access_token,SECRET_KEY,ALGORITHM
 from jose import jwt
-from sqlalchemy.orm import Session,sessionmaker
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
+from models import User,EmailVerification,PasswordResets
 saved_token=[]
 def fake_send_verification_email(email,token):
     saved_token.append(token)
@@ -33,8 +35,7 @@ def test_db_engine():
             if os.path.exists("test_library_test.db"):
                 os.remove("test_library_test.db")
         except PermissionError:
-            pass
-    
+            pass  
 @pytest.fixture
 def db(test_db_engine):
     SessionLocal = sessionmaker(test_db_engine)
@@ -45,7 +46,6 @@ def db(test_db_engine):
         db.close()
 @pytest.fixture
 def client(test_db_engine,monkeypatch):
-    
     monkeypatch.setattr(users,"send_verification_email",fake_send_verification_email)
     monkeypatch.setattr(users,"send_password_reset_email",fake_send_reset_password)
     SessionLocal = create_session_factory(test_db_engine)
@@ -59,11 +59,8 @@ def client(test_db_engine,monkeypatch):
     yield TestClient(app)
     app.dependency_overrides.clear()
 
-def test_verify_email(client):
-    saved_token.clear()
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_verify_email(client,db):
+        saved_token.clear()
         user={
             "name":"test",
             "email":"test@gmail.com",
@@ -71,20 +68,15 @@ def test_verify_email(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code == 200
-        response= client.get("/users/verify-email",params={"token":saved_token[0]})
+        response= client.get("/users/verify-email",params={"token":saved_token[-1]})
         assert response.status_code == 200
-        cursor.execute("SELECT * FROM users WHERE email=?",(user["email"],))
-        row=cursor.fetchone()
-        assert row[6] == 1
-    finally:
-        conn.close()
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        assert result.is_verified == True
 def test_verify_email_invalid_token(client):
     response=client.get("/users/verify-email",params={"token":"s;lakjdf;ajsd;klfja;ljdsfjadjfla"})
     assert response.status_code == 401
-def test_verify_email_expired_token(client):
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_verify_email_expired_token(client,db):
         user={
             "name":"test",
             "email":"test@gmail.com",
@@ -92,14 +84,16 @@ def test_verify_email_expired_token(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code == 200
-        hash_token=hashlib.sha256(saved_token[0].encode()).hexdigest()
+        hash_token=hashlib.sha256(saved_token[-1].encode()).hexdigest()
+        db.expire_all()
         time=datetime.isoformat(datetime.now(timezone.utc)-timedelta(hours=1))
-        cursor.execute("UPDATE email_verifications SET expires_at=? WHERE token_hash=?",(time,hash_token))
-        conn.commit()
-        response=client.get("/users/verify-email",params={"token":saved_token[0]})
+        stmt = select(EmailVerification).where(EmailVerification.token_hash==hash_token)
+        result = db.execute(stmt).scalar_one_or_none()
+        assert result is not None
+        result.expires_at=time
+        db.commit()
+        response=client.get("/users/verify-email",params={"token":saved_token[-1]})
         assert response.status_code == 401
-    finally:
-        conn.close()
 def test_creat_user_duplicate_email(client):
     user={
         "name":"test",
@@ -146,11 +140,8 @@ def test_forgot_password(client):
     assert user["email"] in reset_token
     assert reset_token[1]
 @pytest.fixture
-def reset_data(client):
-    reset_token.clear()
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def reset_data(client,db):
+        reset_token.clear()
         user={
             "name":"test",
             "email":"test@gmail.com",
@@ -158,14 +149,13 @@ def reset_data(client):
         }
         response0=client.post("/users/",json=user)
         assert response0.status_code==200
-        cursor.execute("UPDATE users SET is_verified=? WHERE email=?",(1,user["email"]))
-        conn.commit()
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        result.is_verified=True
+        db.commit()
         response1=client.post('/users/forgot-password',params={"email":user["email"]})
         assert response1.status_code==200
         return user,reset_token[-1]
-    finally:
-        conn.close()
-    
 def test_reset_password_success(client,reset_data):
     user,token=reset_data
     response2=client.post("/users/reset-password",params={"token":token,"new_password":"azouzazouz"})
@@ -177,19 +167,16 @@ def test_reset_password_success(client,reset_data):
 def test_reset_invalid_token(client):
     response1=client.post("/users/reset-password",params={"token":"lskdjhglskdflgjslgjsk","new_password":"azouzazouz"})
     assert response1.status_code==401
-def test_reset_expired_token(client,reset_data):
-    try:
+def test_reset_expired_token(client,reset_data,db):
         user,token=reset_data
-        conn=database.get_connection()
-        cursor=conn.cursor()
         hash_token=hashlib.sha256(token.encode()).hexdigest()
         time=datetime.isoformat(datetime.now(timezone.utc)-timedelta(hours=1))
-        cursor.execute("UPDATE password_resets SET expires_at=? WHERE token_hash=?",(time,hash_token))
-        conn.commit()
+        stmt = select(PasswordResets).where(PasswordResets.token_hash==hash_token)
+        result  = db.execute(stmt).scalar_one_or_none()
+        result.expires_at=time
+        db.commit()
         response0=client.post("/users/reset-password",params={"token":token,"new_password":"azouzazouz"})
         assert response0.status_code==401
-    finally:
-        conn.close()
 def test_reset_password_reuesd_token(client,reset_data):
     user,token=reset_data
     response=client.post("/users/reset-password",params={"token":token,"new_password":"azouzazouz"})
@@ -199,10 +186,7 @@ def test_reset_password_reuesd_token(client,reset_data):
 def test_forgot_password_user_not_found(client):
     response=client.post("/users/forgot-password",params={"email":"azouz@gmail.com"})
     assert response.status_code==401
-def test_read_user_id(client):
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_read_user_id(client,db):
         user={
             "name":"tset",
             "email":"test@gmail.com",
@@ -210,19 +194,15 @@ def test_read_user_id(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code==200
-        cursor.execute("SELECT id FROM users WHERE email=?",(user["email"],))
-        user_id=cursor.fetchone()[0]
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        user_id=result.id
         response2=client.get(f"/users/user/{user_id}")
         assert response2.status_code==200
-    finally:
-        conn.close()
 def test_read_user_id_not_found(client):
     response=client.get(f"/users/user/{9999999}")
     assert response.status_code==404
-def test_update_user(client):
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_update_user(client,db):
         user={
             "name":"test",
             "email":"test@gmail.com",
@@ -230,19 +210,14 @@ def test_update_user(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code==200
-        cursor.execute("SELECT id FROM users WHERE email=?",(user["email"],))
-        user_id=cursor.fetchone()[0]
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        user_id=result.id
         token=create_access_token(data={"sub":str(user_id)})
         headers={"Authorization":f"Bearer {token}"}
         response2=client.put(f"/users/user/{user_id}",json={"name":"updated_name"},headers=headers)
         assert response2.status_code==403
-    finally:
-        conn.close()
-
-def test_update_user_admin(client):
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_update_user_admin(client,db):
         user={
             "name":"test",
             "email":"test@gmail.com",
@@ -250,20 +225,16 @@ def test_update_user_admin(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code==200
-        cursor.execute("SELECT id FROM users WHERE email=?",(user["email"],))
-        user_id=cursor.fetchone()[0]
-        cursor.execute("UPDATE users SET role=? WHERE id=?",("admin",user_id))
-        conn.commit()
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        user_id=result.id
+        result.role="admin"
+        db.commit()
         token=create_access_token(data={"sub":str(user_id)})
         headers={"Authorization":f"Bearer {token}"}
         response2=client.put(f"/users/user/{user_id}",json={"name":"updated_name"},headers=headers)
         assert response2.status_code==200
-    finally:
-        conn.close()
-def test_delete_user(client):
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_delete_user(client,db):
         user={
             "name":"test",
             "email":"test@gmail.com",
@@ -271,18 +242,14 @@ def test_delete_user(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code==200
-        cursor.execute("SELECT id FROM users WHERE email=?",(user["email"],))
-        user_id=cursor.fetchone()[0]
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        user_id=result.id
         token=create_access_token(data={"sub":str(user_id)})
         headers={"Authorization":f"Bearer {token}"}
         response2=client.delete(f"/users/user/{user_id}",headers=headers)
         assert response2.status_code==403
-    finally:
-        conn.close()
-def test_delete_user_admin(client):
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_delete_user_admin(client,db):
         user={
             "name":"test",
             "email":"test@gmail.com",
@@ -290,25 +257,21 @@ def test_delete_user_admin(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code==200
-        cursor.execute("SELECT id FROM users WHERE email=?",(user["email"],))
-        user_id=cursor.fetchone()[0]
-        cursor.execute("UPDATE users SET role=? WHERE id=?",("admin",user_id))
-        conn.commit()
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        user_id=result.id
+        result.role="admin"
+        db.commit()
         token=create_access_token(data={"sub":str(user_id)})
         headers={"Authorization":f"Bearer {token}"}
         response2=client.delete(f"/users/user/{user_id}",headers=headers)
         assert response2.status_code==200
-    finally:
-        conn.close()
 def test_delete_user_not_found(client):
     token=create_access_token(data={"sub":str(9999999)})
     headers={"Authorization":f"Bearer {token}"}
     response=client.delete(f"/users/user/{9999999}",headers=headers)
     assert response.status_code==404
-def test_get_me(client):
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_get_me(client,db):
         user={
             "name":"test",
             "email":"test@gmail.com",
@@ -316,22 +279,18 @@ def test_get_me(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code==200
-        cursor.execute("SELECT id FROM users WHERE email=?",(user["email"],))
-        user_id=cursor.fetchone()[0]
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        user_id=result.id
         token=create_access_token(data={"sub":str(user_id)})
         headers={"Authorization":f"Bearer {token}"}
         response2=client.get("/users/me",headers=headers)
         assert response2.status_code==200
-    finally:
-        conn.close()
 def test_get_me_invalid_token(client):
     headers={"Authorization":"Bearer invalid_token"}
     response=client.get("/users/me",headers=headers)
     assert response.status_code==401
-def test_get_me_expired_token(client):
-    try:
-        conn=database.get_connection()
-        cursor=conn.cursor()
+def test_get_me_expired_token(client,db):
         user={
             "name":"test",
             "email":"test@gamil.com",
@@ -339,15 +298,14 @@ def test_get_me_expired_token(client):
         }
         response1=client.post("/users/",json=user)
         assert response1.status_code==200
-        cursor.execute("SELECT id FROM users WHERE email=?",(user["email"],))
-        user_id=cursor.fetchone()[0]
+        stmt = select(User).where(User.email==user["email"])
+        result = db.execute(stmt).scalar_one_or_none()
+        user_id=result.id
         expire_time=datetime.now(timezone.utc)-timedelta(hours=1)
         to_encode={"sub":str(user_id),"exp":expire_time,"token_type":"access"}
         token=jwt.encode(to_encode,SECRET_KEY,algorithm=ALGORITHM)
         headers={"Authorization":f"Bearer {token}"}
         response2=client.get("/users/me",headers=headers)
         assert response2.status_code==401
-    finally:
-        conn.close()
 
 
