@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select,func,or_,and_
 from fastapi import HTTPException
 from typing import Optional,List
-from models import Book
+from app.models import Book
 
 def crud_create_book(book,db:Session):
     try:

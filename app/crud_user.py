@@ -4,7 +4,7 @@ from app.schema import EmailStr
 from datetime import datetime,timezone
 from sqlalchemy import select,and_
 from sqlalchemy.orm import Session
-from models import User,EmailVerification,PasswordResets
+from app.models import User,EmailVerification,PasswordResets
 from app.loggin_config import logger
 
 def crud_create_user(db:Session,user):

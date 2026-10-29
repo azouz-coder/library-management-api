@@ -21,7 +21,7 @@ from app.security import oauth2_scheme
 from app.tokens import verify_access_token,require_admin,verify_refresh_token,revoke_refresh_token
 from app.database import get_db
 from app.email_verification import create_hash_token,send_verification_email,send_password_reset_email
-from models import User
+from app.models import User
 import os
 import uuid
 import hashlib

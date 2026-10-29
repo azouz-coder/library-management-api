@@ -11,7 +11,7 @@ from app.tokens import create_access_token,SECRET_KEY,ALGORITHM
 from jose import jwt
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select
-from models import User,EmailVerification,PasswordResets
+from app.models import User,EmailVerification,PasswordResets
 saved_token=[]
 def fake_send_verification_email(email,token):
     saved_token.append(token)

@@ -11,7 +11,7 @@ from app.crud_book import (
 from app.database import get_connection , get_db
 from app.tokens import require_admin
 from sqlalchemy.orm import Session
-from models import Book
+from app.models import Book
 import uuid
 import os 
 

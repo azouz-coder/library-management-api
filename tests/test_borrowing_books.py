@@ -7,7 +7,7 @@ from app.main import app
 from app.tokens import create_access_token
 import app.users as users
 from sqlalchemy import select
-from models import User,Book,Borrowing
+from app.models import User,Book,Borrowing
 @pytest.fixture
 def test_db_engine():
     database.DATABASE_PATH="test_library_test.db"

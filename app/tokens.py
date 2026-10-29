@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.security import oauth2_scheme
 from fastapi import Depends
 from dotenv import load_dotenv
-from models import RefreshTokens
+from app.models import RefreshTokens
 load_dotenv()
 SECRET_KEY=os.getenv("SECRET_KEY")
 ALGORITHM="HS256"
