@@ -10,6 +10,8 @@ from app.crud_book import (
 )
 from app.database import get_connection , get_db
 from app.tokens import require_admin
+from sqlalchemy.orm import Session
+from models import Book
 import uuid
 import os 
 
@@ -36,11 +38,8 @@ async def update_book(isbn:str,book:UpdateBook,db = Depends(get_db),crruent_book
 async def delete_book(isbn:str,db=Depends(get_db),crruent_book=Depends(require_admin)):
     return crud_delete_book(isbn,db)
 @router.post("/{isbn}/uploads")
-async def upload_book_image(isbn:str,file:UploadFile=File(...)):
-    conn=None
+async def upload_book_image(db:Session,isbn:str,file:UploadFile=File(...)):
     try:
-        conn=get_connection()
-        cursor=conn.cursor()
         if file.content_type not in ["image/png","image/jpeg"]:
             raise HTTPException(
                 status_code=415,
@@ -66,8 +65,7 @@ async def upload_book_image(isbn:str,file:UploadFile=File(...)):
                 status_code=413,
                 detail="This file is bigger than allow size,Please Enter a file smaller than 5MB"
             )
-        cursor.execute("SELECT * FROM books WHERE isbn=?",(isbn,))
-        row=cursor.fetchone()
+        row=db.get(Book,isbn)
         if not row:
             raise HTTPException(
                 status_code=404,
@@ -83,8 +81,8 @@ async def upload_book_image(isbn:str,file:UploadFile=File(...)):
             f.write(content)
         db_updated=False
         try:
-            cursor.execute("UPDATE books SET image_path=? WHERE isbn=?",(path,isbn))
-            conn.commit()
+            row.image_path=path
+            db.commit()
             db_updated=True
             old_image_path=row[3]
             if old_image_path is not None:
@@ -103,6 +101,6 @@ async def upload_book_image(isbn:str,file:UploadFile=File(...)):
         }
     except HTTPException:
         raise
-    finally:
-        if conn is None:
-            conn.close()
+    except Exception:
+        db.rollback()
+        raise
