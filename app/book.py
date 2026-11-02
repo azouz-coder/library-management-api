@@ -8,7 +8,7 @@ from app.crud_book import (
     crud_update_book,
     crud_delete_book,
 )
-from app.database import get_connection , get_db
+from app.database import  get_db
 from app.tokens import require_admin
 from sqlalchemy.orm import Session
 from app.models import Book
@@ -38,7 +38,7 @@ async def update_book(isbn:str,book:UpdateBook,db = Depends(get_db),crruent_book
 async def delete_book(isbn:str,db=Depends(get_db),crruent_book=Depends(require_admin)):
     return crud_delete_book(isbn,db)
 @router.post("/{isbn}/uploads")
-async def upload_book_image(db:Session,isbn:str,file:UploadFile=File(...)):
+async def upload_book_image(isbn:str,db:Session=Depends(get_db),file:UploadFile=File(...)):
     try:
         if file.content_type not in ["image/png","image/jpeg"]:
             raise HTTPException(
@@ -81,15 +81,16 @@ async def upload_book_image(db:Session,isbn:str,file:UploadFile=File(...)):
             f.write(content)
         db_updated=False
         try:
+            old_image_path=row.image_path
             row.image_path=path
             db.commit()
             db_updated=True
-            old_image_path=row[3]
             if old_image_path is not None:
                 if os.path.exists(old_image_path):
                     os.remove(old_image_path)
         except Exception :
             if not db_updated:
+                db.rollback()
                 if os.path.exists(path):
                     os.remove(path)
                 raise HTTPException(

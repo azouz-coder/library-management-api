@@ -1,4 +1,3 @@
-from app.database import get_connection
 from fastapi import HTTPException
 from datetime import datetime,timezone
 from sqlalchemy.orm import Session

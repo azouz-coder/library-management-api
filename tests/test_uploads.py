@@ -1,35 +1,56 @@
 import os
-
 import pytest
 from fastapi.testclient import TestClient
-
-import app.database as database
+from app.database import create_db_engine, create_session_factory, get_db
+from app.models import Base
+from sqlalchemy.orm import Session
 import app.users as users
+from app.models import User
 from app.main import app
 from app.tokens import create_access_token
-
+from unittest.mock import MagicMock
+@pytest.fixture
+def test_db_engine():
+    if os.path.exists("test_library_test.db"):
+        os.remove("test_library_test.db")
+    engine= create_db_engine("test_library_test.db")
+    Base.metadata.create_all(bind=engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
+        try:
+            if os.path.exists("test_library_test.db"):
+                os.remove("test_library_test.db")
+        except PermissionError:
+            pass
+@pytest.fixture
+def db(test_db_engine):
+    SessionLocal = create_session_factory(test_db_engine)
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 @pytest.fixture
-def client(monkeypatch, tmp_path):
-    database.DATABASE_PATH = str(tmp_path / "test_library_test.db")
-
-    database.init_db()
-
+def client(monkeypatch,test_db_engine):
     monkeypatch.setattr(
         users,
         "send_verification_email",
         lambda email, token: None
     )
-
+    SessionLocal = create_session_factory(test_db_engine)
+    def override_get_db():
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+    app.dependency_overrides[get_db] = override_get_db
     yield TestClient(app)
-
-
-def create_test_user():
-    conn = None
-
-    try:
-        conn = database.get_connection()
-        cursor = conn.cursor()
+    app.dependency_overrides.clear()
+def create_test_user(db:Session):
 
         user = {
             "name": "test",
@@ -38,38 +59,15 @@ def create_test_user():
         }
 
         # إنشاء المستخدم
-        cursor.execute(
-            """
-            INSERT INTO users
-            (name, email, password, role, is_verified)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                user["name"],
-                user["email"],
-                user["password"],
-                "user",
-                1
-            )
-        )
-
-        conn.commit()
+        user_obj = User(name=user["name"], email=user["email"], password=user["password"], role="user", is_verified=True)
+        db.add(user_obj)
+        db.commit()
 
         # الحصول على user_id
-        cursor.execute(
-            "SELECT id FROM users WHERE email=?",
-            (user["email"],)
-        )
-
-        user_id = cursor.fetchone()[0]
-
+        user_id = user_obj.id
         # تحويل المستخدم إلى admin
-        cursor.execute(
-            "UPDATE users SET role=? WHERE id=?",
-            ("admin", user_id)
-        )
-
-        conn.commit()
+        user_obj.role = "admin"
+        db.commit()
 
         # إنشاء Token
         token = create_access_token(
@@ -82,13 +80,10 @@ def create_test_user():
 
         return user_id, headers
 
-    finally:
-        if conn is not None:
-            conn.close()
 
 
-def test_upload_jpg(client):
-    user_id, headers = create_test_user()
+def test_upload_jpg(client,db:Session):
+    user_id, headers = create_test_user(db)
 
     with open("test_image.jpg", "rb") as f:
         content = f.read()
@@ -106,29 +101,12 @@ def test_upload_jpg(client):
     )
 
     assert response.status_code == 200
-
-    conn = None
-
-    try:
-        conn = database.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT image_profile FROM users WHERE id=?",
-            (user_id,)
-        )
-
-        row = cursor.fetchone()
-
-        assert row[0] is not None
-
-    finally:
-        if conn is not None:
-            conn.close()
+    user = db.get(User,user_id)
+    assert user.image_profile is not None
 
 
-def test_upload_png(client):
-    user_id, headers = create_test_user()
+def test_upload_png(client,db:Session):
+    user_id, headers = create_test_user(db)
 
     with open("test_image.png", "rb") as f:
         content = f.read()
@@ -146,29 +124,10 @@ def test_upload_png(client):
     )
 
     assert response.status_code == 200
-
-    conn = None
-
-    try:
-        conn = database.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT image_profile FROM users WHERE id=?",
-            (user_id,)
-        )
-
-        row = cursor.fetchone()
-
-        assert row[0] is not None
-
-    finally:
-        if conn is not None:
-            conn.close()
-
-
-def test_upload_invalid_type(client):
-    user_id, headers = create_test_user()
+    user = db.get(User,user_id)
+    assert user.image_profile is not None
+def test_upload_invalid_type(client,db:Session):
+    user_id, headers = create_test_user(db)
 
     with open("test_image.ico", "rb") as f:
         content = f.read()
@@ -188,8 +147,8 @@ def test_upload_invalid_type(client):
     assert response.status_code == 415
 
 
-def test_upload_fake_jpeg(client):
-    user_id, headers = create_test_user()
+def test_upload_fake_jpeg(client,db:Session):
+    user_id, headers = create_test_user(db)
 
     with open("test_image.jpg", "rb") as f:
         content = b"fakejpeg" + f.read()
@@ -209,8 +168,8 @@ def test_upload_fake_jpeg(client):
     assert response.status_code == 415
 
 
-def test_upload_too_large_file(client):
-    user_id, headers = create_test_user()
+def test_upload_too_large_file(client,db:Session):
+    user_id, headers = create_test_user(db)
 
     content = (
         b"\x89PNG\r\n\x1a\n"
@@ -232,8 +191,8 @@ def test_upload_too_large_file(client):
     assert response.status_code == 413
 
 
-def test_upload_user_not_found(client):
-    _, headers = create_test_user()
+def test_upload_user_not_found(client,db:Session):
+    _, headers = create_test_user(db)
 
     with open("test_image.jpg", "rb") as f:
         content = f.read()
@@ -255,8 +214,8 @@ def test_upload_user_not_found(client):
     assert response.status_code == 404
 
 
-def test_upload_file_exists(client):
-    user_id, headers = create_test_user()
+def test_upload_file_exists(client,db:Session):
+    user_id, headers = create_test_user(db)
 
     with open("test_image.jpg", "rb") as f:
         content = f.read()
@@ -274,31 +233,13 @@ def test_upload_file_exists(client):
     )
 
     assert response.status_code == 200
-
-    conn = None
-
-    try:
-        conn = database.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT image_profile FROM users WHERE id=?",
-            (user_id,)
-        )
-
-        row = cursor.fetchone()
-
-        path = row[0]
-
-        assert os.path.exists(path)
-
-    finally:
-        if conn is not None:
-            conn.close()
+    user = db.get(User,user_id)
+    db.expire(user)
+    assert os.path.exists(user.image_profile)
 
 
-def test_upload_file_remove_old_file(client):
-    user_id, headers = create_test_user()
+def test_upload_file_remove_old_file(client,db:Session):
+    user_id, headers = create_test_user(db)
 
     with open("carbon (49).png", "rb") as f:
         content = f.read()
@@ -316,23 +257,9 @@ def test_upload_file_remove_old_file(client):
     )
 
     assert response1.status_code == 200
-
-    conn = None
-
-    try:
-        conn = database.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT image_profile FROM users WHERE id=?",
-            (user_id,)
-        )
-
-        old_image_path = cursor.fetchone()[0]
-
-    finally:
-        if conn is not None:
-            conn.close()
+    user = db.get(User,user_id)
+    db.expire(user)
+    old_image_path = user.image_profile
 
     with open("watsup.jpeg", "rb") as f:
         content = f.read()
@@ -350,87 +277,39 @@ def test_upload_file_remove_old_file(client):
     )
 
     assert response2.status_code == 200
-
-    conn = None
-
-    try:
-        conn = database.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            "SELECT image_profile FROM users WHERE id=?",
-            (user_id,)
-        )
-
-        new_image_path = cursor.fetchone()[0]
-
-    finally:
-        if conn is not None:
-            conn.close()
+    user = db.get(User,user_id)
+    db.expire(user)
+    new_image_path = user.image_profile
 
     assert new_image_path != old_image_path
     assert not os.path.exists(old_image_path)
     assert os.path.exists(new_image_path)
 
 
-def test_upload_db_failure(client, monkeypatch):
-    user_id, headers = create_test_user()
 
-    conn = database.get_connection()
-    real_cursor = conn.cursor()
+def test_upload_db_failure(client, db, monkeypatch):
+    user_id, headers = create_test_user(db)
 
-    class FakeCursor:
+    # 1) session مزيّف: كل شيء حقيقي، إلا commit يفشل
+    broken_db = MagicMock(wraps=db)
+    broken_db.commit.side_effect = Exception("Database error")
+    app.dependency_overrides[get_db] = lambda: broken_db
 
-        def execute(self, query, params=None):
-            if query.startswith("UPDATE users SET image_profile"):
-                raise Exception("Database error")
-
-            return real_cursor.execute(query, params)
-
-        def fetchone(self):
-            return real_cursor.fetchone()
-
-    class FakeConnection:
-
-        def cursor(self):
-            return FakeCursor()
-
-        def commit(self):
-            return conn.commit()
-
-        def close(self):
-            return conn.close()
-
-    def fake_get_connection():
-        return FakeConnection()
-
-    monkeypatch.setattr(
-        users,
-        "get_connection",
-        fake_get_connection
-    )
-
+    # 2) نسجّل الملفات قبل الطلب
     files_before = set(os.listdir("avatars"))
 
+    # 3) نرسل الصورة
     with open("test_image.jpg", "rb") as f:
         content = f.read()
 
     response = client.post(
         f"/users/user/{user_id}/avatars",
-        files={
-            "file": (
-                "test.jpg",
-                content,
-                "image/jpeg"
-            )
-        },
-        headers=headers
+        files={"file": ("test.jpg", content, "image/jpeg")},
+        headers=headers,
     )
 
+    # 4) نتحقق
     assert response.status_code == 500
+    assert set(os.listdir("avatars")) == files_before
 
-    files_after = set(os.listdir("avatars"))
-
-    assert files_before == files_after
-
-    conn.close()
+    app.dependency_overrides.clear()

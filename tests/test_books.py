@@ -2,7 +2,7 @@ from fastapi.testclient import TestClient
 import os
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from app.models import User
+from app.models import User,Base
 import app.database as database
 from app.database import create_db_engine,create_session_factory,get_db
 import pytest
@@ -11,11 +11,10 @@ from app.tokens import create_access_token
 import app.users as users
 @pytest.fixture
 def test_db_engine():
-    database.DATABASE_PATH="test_library_test.db"
     if os.path.exists("test_library_test.db"):
         os.remove("test_library_test.db")
-    database.init_db()
     engine =create_db_engine("test_library_test.db")
+    Base.metadata.create_all(bind=engine)
     try:
         yield engine
     finally:

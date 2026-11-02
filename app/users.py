@@ -135,9 +135,10 @@ async def uploads_user_profile(user_id:int,file:UploadFile=File(...),current_use
         path=os.path.join("avatars",f"{uuid.uuid4()}{extension}")
         with open(path, "wb") as f:
             f.write(content)
+        old_image=data.image_profile
         data.image_profile=path
         db.commit()
-        old_image=data.image_profile
+        
         db_updated=True
         if old_image is not None:
             if os.path.exists(old_image):

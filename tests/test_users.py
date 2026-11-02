@@ -2,7 +2,6 @@ from fastapi.testclient import TestClient
 import pytest
 from app.main import app
 import os 
-import app.database as database
 from app.database import create_db_engine,create_session_factory,get_db
 import app.users as users
 import hashlib
@@ -11,7 +10,7 @@ from app.tokens import create_access_token,SECRET_KEY,ALGORITHM
 from jose import jwt
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select
-from app.models import User,EmailVerification,PasswordResets
+from app.models import Base, User,EmailVerification,PasswordResets
 saved_token=[]
 def fake_send_verification_email(email,token):
     saved_token.append(token)
@@ -22,11 +21,12 @@ def fake_send_reset_password(email,token):
  
 @pytest.fixture
 def test_db_engine():
-    database.DATABASE_PATH="test_library_test.db"
     if os.path.exists("test_library_test.db"):
         os.remove("test_library_test.db")
-    database.init_db()
+    if os.path.exists("test_library_test.db"):
+        os.remove("test_library_test.db")
     engine = create_db_engine("test_library_test.db")
+    Base.metadata.create_all(bind=engine)
     try:
         yield engine
     finally:

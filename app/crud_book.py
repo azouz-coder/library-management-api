@@ -1,4 +1,3 @@
-from app.database import get_connection
 from sqlalchemy.orm import Session
 from sqlalchemy import select,func,or_,and_
 from fastapi import HTTPException

@@ -118,7 +118,7 @@ def revoke_refresh_token(refresh_token:str,db:Session):
             )
         data.revoked=True
         new_access_token=create_access_token(data={"sub":str(data.id)})
-        new_refresh_token=create_refresh_token(data.id)
+        new_refresh_token=create_refresh_token(data.id,db)
         return {
             "access_token":new_access_token,
             "refresh_token":new_refresh_token[0],

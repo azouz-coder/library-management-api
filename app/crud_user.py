@@ -2,7 +2,7 @@ from app.security import hash_password
 from fastapi import HTTPException
 from app.schema import EmailStr
 from datetime import datetime,timezone
-from sqlalchemy import select,and_
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.models import User,EmailVerification,PasswordResets
 from app.loggin_config import logger

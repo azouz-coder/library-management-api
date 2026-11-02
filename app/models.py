@@ -17,33 +17,33 @@ class User(Base):
     password : Mapped[str] = mapped_column(String,nullable=False)
     role : Mapped[str] = mapped_column(String,nullable=False)
     image_profile : Mapped[str|None] = mapped_column(String,nullable=True)
-    is_verified : Mapped[bool] = mapped_column(Boolean,default=False,nullable=False)
+    is_verified : Mapped[bool] = mapped_column(Boolean,default=False,server_default="false",nullable=False)
 class Borrowing(Base):
     __tablename__="borrowing"
     id : Mapped[int] = mapped_column(Integer,primary_key=True)
     isbn : Mapped[str] = mapped_column(String,ForeignKey("books.isbn",ondelete="CASCADE"),nullable=False)
     user_id : Mapped[int] = mapped_column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
-    borrowed_at : Mapped[str] = mapped_column(String,nullable=True)
-    returned_at : Mapped[str] = mapped_column(String,nullable=True)
+    borrowed_at : Mapped[str|None] = mapped_column(String,nullable=True)
+    returned_at : Mapped[str|None] = mapped_column(String,nullable=True)
 class EmailVerification(Base):
     __tablename__="email_verifications"
     id : Mapped[int] = mapped_column(Integer , primary_key=True)
     user_id : Mapped[int] = mapped_column(Integer,ForeignKey("users.id",ondelete="CASCADE"), nullable=False )
     token_hash : Mapped[str] = mapped_column(String,nullable=False)
     expires_at : Mapped[str] = mapped_column(String,nullable=False)
-    used : Mapped[bool] = mapped_column(Boolean,default=False)
+    used : Mapped[bool] = mapped_column(Boolean,default=False,server_default="false",nullable=False)
 class RefreshTokens(Base):
     __tablename__="refresh_tokens"
     id : Mapped[int] = mapped_column(Integer,primary_key=True)
-    user_id : Mapped[int] = mapped_column(Integer,nullable=False)
+    user_id : Mapped[int] = mapped_column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     hash_token : Mapped[str] = mapped_column(String,nullable=False)
     create_at : Mapped[str] = mapped_column(String,nullable=False)
     expire_at : Mapped[str] = mapped_column(String,nullable=False)
-    revoked : Mapped[int] = mapped_column(Integer,nullable=False)
+    revoked : Mapped[bool] = mapped_column(Boolean,default=False,server_default="false",nullable=False)
 class PasswordResets(Base):
     __tablename__="password_resets"
     id : Mapped[int] = mapped_column(Integer , primary_key=True)
     user_id : Mapped[int] = mapped_column(Integer,ForeignKey("users.id",ondelete="CASCADE"),nullable=False)
     token_hash : Mapped[str] = mapped_column(String,nullable=False)
     expires_at : Mapped[str] = mapped_column(String,nullable=False)
-    used : Mapped[bool] = mapped_column(Boolean,default=False)
+    used : Mapped[bool] = mapped_column(Boolean,default=False,server_default="false",nullable=False)
