@@ -13,6 +13,8 @@ from dotenv import load_dotenv
 from app.models import RefreshTokens
 load_dotenv()
 SECRET_KEY=os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY is not set. Add it to your .env file.")
 ALGORITHM="HS256"
 EXPIRE_ACCESS_TOKEN=30
 def create_access_token(data:dict):
@@ -44,8 +46,15 @@ def verify_access_token(token:str,db=Depends(get_db)):
                 status_code=401,
                 detail="Invalid Token"
             )
+        try:
+            user_id=int(user_id)
+        except (TypeError,ValueError):
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid Token"
+            )
         from app.crud_user import crud_read_users
-        return crud_read_users(int(user_id),db)
+        return crud_read_users(user_id,db)
     except JWTError:
         raise HTTPException(
             status_code=401,
@@ -117,8 +126,8 @@ def revoke_refresh_token(refresh_token:str,db:Session):
                 detail="Invalid refresh token"
             )
         data.revoked=True
-        new_access_token=create_access_token(data={"sub":str(data.id)})
-        new_refresh_token=create_refresh_token(data.id,db)
+        new_access_token=create_access_token(data={"sub":str(data.user_id)})
+        new_refresh_token=create_refresh_token(data.user_id,db)
         return {
             "access_token":new_access_token,
             "refresh_token":new_refresh_token[0],

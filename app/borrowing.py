@@ -32,7 +32,7 @@ async def read_borrowing(id:int,db=Depends(get_db)):
 
 
 @router.delete("/{id}")
-async def deleted_register(id:int,db=Depends(get_db)):
+async def deleted_register(id:int,current_borrowing=Depends(require_admin),db=Depends(get_db)):
     return crud_delete_register(id,db)
 
 @router.get("/",response_model=list[ResponseBorrowing])

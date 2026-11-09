@@ -115,3 +115,13 @@ def test_login_wrong_password(client):
 def test_login_unknown_email(client):
         response=client.post("/users/login",data={"username":"test@gmail.com","password":"testazouz"})
         assert response.status_code == 401
+def test_refresh_token_belongs_to_same_user(client):
+        client.post("/users/login",data={"username":"azouz@gmail.com","password":"testazouz"})
+        response=client.post("/users/login",data={"username":"azouz@gmail.com","password":"testazouz"})
+        second_refresh_token=response.json()["refresh_token"]
+        refreshed=client.post("/users/refresh",params={"refresh_token":second_refresh_token})
+        assert refreshed.status_code == 200
+        headers={"Authorization":f"Bearer {refreshed.json()['access_token']}"}
+        me=client.get("/users/me",headers=headers)
+        assert me.status_code == 200
+        assert me.json()["email"] == "azouz@gmail.com"

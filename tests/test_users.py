@@ -164,6 +164,12 @@ def test_reset_password_success(client,reset_data):
     assert response3.status_code==401
     response4=client.post("/users/login",data={"username":user["email"],"password":"azouzazouz"})
     assert response4.status_code==200
+def test_reset_password_too_short(client,reset_data):
+    user,token=reset_data
+    response=client.post("/users/reset-password",params={"token":token,"new_password":"short"})
+    assert response.status_code==422
+    response1=client.post("/users/login",data={"username":user["email"],"password":"12345678"})
+    assert response1.status_code==200
 def test_reset_invalid_token(client):
     response1=client.post("/users/reset-password",params={"token":"lskdjhglskdflgjslgjsk","new_password":"azouzazouz"})
     assert response1.status_code==401

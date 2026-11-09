@@ -111,7 +111,7 @@ def crud_delete_register(id:int,db:Session):
         db.delete(borrow_data)
         db.commit()
         return {
-            "massage":"Borrowing record deleted successfully"
+            "message":"Borrowing record deleted successfully"
         }
     except HTTPException:
         raise
