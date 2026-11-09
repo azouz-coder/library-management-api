@@ -38,7 +38,7 @@ async def update_book(isbn:str,book:UpdateBook,db = Depends(get_db),crruent_book
 async def delete_book(isbn:str,db=Depends(get_db),crruent_book=Depends(require_admin)):
     return crud_delete_book(isbn,db)
 @router.post("/{isbn}/uploads")
-async def upload_book_image(isbn:str,db:Session=Depends(get_db),file:UploadFile=File(...)):
+async def upload_book_image(isbn:str,db:Session=Depends(get_db),file:UploadFile=File(...),current_book=Depends(require_admin)):
     try:
         if file.content_type not in ["image/png","image/jpeg"]:
             raise HTTPException(

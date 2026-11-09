@@ -240,7 +240,7 @@ def test_delete_borrowing_not_returned(client,db):
         resoponse_3=client.post("/borrowing/",json={"isbn":book["isbn"],"user_id":user_id},headers=headers)
         assert resoponse_3.status_code==200
         row=db.get(Borrowing,user_id)
-        resoponse_4=client.delete(f"/borrowing/{row.id}")
+        resoponse_4=client.delete(f"/borrowing/{row.id}",headers=headers)
         assert resoponse_4.status_code==409
 def test_delete_borrowing_retuned(client,db):
         user={
@@ -269,7 +269,7 @@ def test_delete_borrowing_retuned(client,db):
         row=db.get(Borrowing,user_id)
         resoponse_4=client.put("/borrowing/",params={"isbn":book["isbn"],'user_id':user_id},headers=headers)
         assert resoponse_4.status_code==200
-        resoponse_5=client.delete(f"/borrowing/{row.id}")
+        resoponse_5=client.delete(f"/borrowing/{row.id}",headers=headers)
         assert resoponse_5.status_code==200
         db.expunge_all()
         delete_row=db.get(Borrowing,row.id)

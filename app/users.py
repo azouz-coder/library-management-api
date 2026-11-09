@@ -1,4 +1,5 @@
-from fastapi import APIRouter,Depends,UploadFile,File,HTTPException
+from typing import Annotated
+from fastapi import APIRouter,Depends,UploadFile,File,HTTPException,Query
 from sqlalchemy.orm import Session
 from app.schema import CreateUser,UpdatedUser,ResponseUser,RespondeLogin,EmailStr
 from app.crud_user import (
@@ -44,7 +45,7 @@ async def forgot_password(email:EmailStr,db:Session=Depends(get_db)):
         "message":"Please wait You will receive an email"
     }
 @router.post("/reset-password")
-async def reset_password(token:str,new_password:str,db:Session=Depends(get_db)):
+async def reset_password(token:str,new_password:Annotated[str,Query(min_length=8)],db:Session=Depends(get_db)):
     hash_token=hashlib.sha256(
         token.encode()
     ).hexdigest()
@@ -147,9 +148,9 @@ async def uploads_user_profile(user_id:int,file:UploadFile=File(...),current_use
         raise
     except Exception:
         if not db_updated:
-            if os.path.exists(path):
+            db.rollback()
+            if path is not None and os.path.exists(path):
                 os.remove(path)
-                db.rollback()
             raise HTTPException(
                 status_code=500,
                 detail="It happened a wrong to saved the file in database"
